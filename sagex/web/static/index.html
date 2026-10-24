@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAGE-X</title>
+<style>
+  :root {
+    --bg:#faf9f7; --panel:#fff; --sunk:#f4f2ee; --ink:#1a1a19; --muted:#6f6e69;
+    --line:#e5e3dd; --line-strong:#d3d0c8;
+    --accent:#2f6f5e; --accent-soft:#eaf3f0; --accent-ink:#fff;
+    --warn:#8d4a26; --warn-soft:#fdf1e8;
+    --radius:12px; --shadow:0 1px 2px rgba(0,0,0,.04), 0 4px 12px rgba(0,0,0,.03);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#141518; --panel:#1c1e22; --sunk:#232529; --ink:#eae9e5; --muted:#9a9993;
+      --line:#2d3036; --line-strong:#3c4047;
+      --accent:#6cc0a5; --accent-soft:#182622; --accent-ink:#0f201b;
+      --warn:#e3a476; --warn-soft:#2a2019;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.2);
+    }
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:880px; margin:0 auto; padding-block:36px 80px; padding-inline:20px; }
+
+  /* ---------------------------------------------------------- header */
+  header h1 {
+    margin:0; font-size:15px; font-weight:600; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--accent);
+  }
+  header .lede { margin:10px 0 0; font-size:27px; line-height:1.25; letter-spacing:-.02em;
+                 font-weight:600; max-width:22ch; }
+  header .claim { margin:14px 0 0; color:var(--muted); max-width:62ch; }
+  header .claim strong { color:var(--ink); font-weight:600; }
+
+  /* ------------------------------------------------------------ tabs */
+  nav { display:flex; gap:2px; margin:28px 0 20px; border-bottom:1px solid var(--line);
+        overflow-x:auto; }
+  nav button {
+    appearance:none; background:none; border:0; border-bottom:2px solid transparent;
+    padding:10px 15px; font:inherit; font-weight:500; color:var(--muted);
+    cursor:pointer; white-space:nowrap; transition:color .12s;
+  }
+  nav button[aria-selected="true"] { color:var(--ink); border-bottom-color:var(--accent); }
+  nav button:hover { color:var(--ink); }
+
+  section[hidden] { display:none; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+           padding:22px; box-shadow:var(--shadow); margin-bottom:16px; }
+  .panel + .panel { margin-top:16px; }
+
+  /* ------------------------------------------------------- drop zone */
+  .drop {
+    position:relative; display:flex; align-items:center; gap:14px;
+    border:1.5px dashed var(--line-strong); border-radius:var(--radius);
+    background:var(--sunk); padding:16px; cursor:pointer; transition:border-color .12s, background .12s;
+  }
+  .drop:hover, .drop.over { border-color:var(--accent); background:var(--accent-soft); }
+  .drop input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .drop .thumb {
+    width:56px; height:56px; flex:0 0 56px; border-radius:8px; object-fit:cover;
+    background:var(--line); display:none;
+  }
+  .drop .thumb.on { display:block; }
+  /* Same 56px box as .thumb, so a zone showing an icon is exactly as tall as one
+     showing a thumbnail and the two columns stay level. */
+  .drop .icon { width:56px; height:56px; flex:0 0 56px; display:flex;
+                align-items:center; justify-content:center;
+                font-size:24px; color:var(--muted); }
+  /* flex:1 claims the space left by the thumbnail, min-width:0 lets that space be
+     smaller than the filename. Without both, a long name has no width to ellipsis
+     against and stretches the panel instead. */
+  .drop .meta { flex:1; min-width:0; }
+  .drop .meta b, .drop .meta span { display:block; overflow:hidden;
+                  text-overflow:ellipsis; white-space:nowrap; }
+  .drop .meta b { font-weight:600; }
+  .drop .meta span { color:var(--muted); font-size:13px; }
+
+  /* ---------------------------------------------------------- fields */
+  label.lbl { display:block; font-weight:600; margin:0 0 7px; font-size:13px;
+              letter-spacing:.02em; }
+  label.lbl span { font-weight:400; color:var(--muted); letter-spacing:0; }
+  .field { margin-bottom:18px; }
+  .row { display:grid; gap:14px; grid-template-columns:1fr 1fr; }
+  /* Grid items default to min-width:auto, so they refuse to shrink below their content
+     and a long filename would widen the column past 1fr. */
+  .row > * { min-width:0; }
+  /* Let a drop zone fill its column so both stay level even if one label wraps to a
+     second line. Inputs and selects keep their natural height. */
+  .row .field { display:flex; flex-direction:column; }
+  .row .field .drop { flex:1; }
+  @media (max-width:560px) { .row { grid-template-columns:1fr; } }
+
+  input[type=password], input[type=text], input[type=number], select {
+    width:100%; padding:10px 12px; font:inherit; color:var(--ink);
+    background:var(--sunk); border:1px solid var(--line); border-radius:9px;
+  }
+  input:focus-visible, select:focus-visible, .drop:focus-within {
+    outline:2px solid var(--accent); outline-offset:1px;
+  }
+
+  button.go {
+    appearance:none; background:var(--accent); color:var(--accent-ink); border:0;
+    border-radius:9px; padding:12px 22px; font:inherit; font-weight:600; cursor:pointer;
+    display:inline-flex; align-items:center; gap:9px;
+  }
+  button.go:disabled { opacity:.4; cursor:not-allowed; }
+  button.ghost {
+    appearance:none; background:none; color:var(--muted); border:1px solid var(--line);
+    border-radius:8px; padding:7px 13px; font:inherit; font-size:13px; cursor:pointer;
+  }
+  button.ghost[aria-pressed="true"] { color:var(--ink); border-color:var(--accent); }
+
+  .spin {
+    width:14px; height:14px; border:2px solid currentColor; border-right-color:transparent;
+    border-radius:50%; animation:spin .7s linear infinite; display:none;
+  }
+  button.busy .spin { display:block; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* -------------------------------------------------------- capacity */
+  .rates { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); }
+  .rate { border:1px solid var(--line); border-radius:10px; padding:13px 15px; background:var(--sunk); }
+  .rate h4 { margin:0 0 3px; font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+             color:var(--muted); font-weight:600; }
+  .rate .big { font-size:21px; font-weight:650; letter-spacing:-.01em; }
+  .rate.zero .big { color:var(--warn); font-size:16px; }
+  .rate.pick { border-color:var(--accent); background:var(--accent-soft); }
+
+  .bar { height:9px; background:var(--line); border-radius:5px; overflow:hidden; display:flex; }
+  .bar i { display:block; height:100%; background:var(--accent); transition:width .25s ease; }
+  .bar i.over { background:var(--warn); }
+  .barnote { display:flex; justify-content:space-between; margin-top:7px;
+             font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+  /* ---------------------------------------------------------- notice */
+  /* overflow-wrap:anywhere because these messages quote filenames, which often have
+     no spaces to break at and would otherwise run past the edge. */
+  .msg { padding:12px 15px; border-radius:10px; margin-top:16px; font-size:14px;
+         white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.5; }
+  .msg.ok  { background:var(--accent-soft); color:var(--accent); }
+  .msg.bad { background:var(--warn-soft);   color:var(--warn); }
+  .msg[hidden] { display:none !important; }
+
+  /* --------------------------------------------------------- compare */
+  .compare { display:grid; gap:12px; grid-template-columns:repeat(3,1fr); margin-top:18px; }
+  @media (max-width:640px) { .compare { grid-template-columns:1fr; } }
+  .compare figure { margin:0; }
+  .compare img, .compare canvas {
+    width:100%; aspect-ratio:1; object-fit:cover; border-radius:9px;
+    border:1px solid var(--line); background:var(--sunk); display:block;
+  }
+  .compare figcaption { margin-top:7px; font-size:12.5px; color:var(--muted); }
+  .compare figcaption b { display:block; color:var(--ink); font-size:13px; font-weight:600; }
+
+  .stats { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+           margin-top:16px; }
+  .stat { background:var(--sunk); border-radius:9px; padding:11px 13px; }
+  .stat b { display:block; font-size:18px; font-weight:650; font-variant-numeric:tabular-nums; }
+  .stat span { font-size:12px; color:var(--muted); }
+
+  /* ------------------------------------------------------------ rank */
+  .cards { display:grid; gap:10px; margin-top:16px; }
+  .card { display:flex; align-items:center; gap:13px; padding:11px;
+          border:1px solid var(--line); border-radius:10px; background:var(--sunk); }
+  .card.no { opacity:.55; }
+  .card .rank { width:24px; flex:0 0 24px; text-align:center; font-weight:650; color:var(--muted); }
+  .card img { width:48px; height:48px; flex:0 0 48px; border-radius:7px; object-fit:cover; }
+  .card .who { flex:1; min-width:0; }
+  .card .who b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .card .who span { font-size:12.5px; color:var(--muted); }
+  .card .tex { flex:0 0 86px; }
+
+  footer { margin-top:30px; padding-top:18px; border-top:1px solid var(--line);
+           color:var(--muted); font-size:13px; line-height:1.6; }
+  footer strong { color:var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>SAGE-X</h1>
+  <p class="lede">Hide an encrypted file inside an ordinary photograph.</p>
+  <p class="claim">
+    Other tools hide your data whether or not it can survive, so you find out it failed
+    only when extraction comes back empty. This one checks what fits <strong>before</strong>
+    it embeds anything, and refuses when nothing does.
+  </p>
+</header>
+
+<nav role="tablist">
+  <button role="tab" data-tab="hide" aria-selected="true">Hide</button>
+  <button role="tab" data-tab="reveal" aria-selected="false">Reveal</button>
+  <button role="tab" data-tab="analyse" aria-selected="false">Analyse</button>
+  <button role="tab" data-tab="rank" aria-selected="false">Rank covers</button>
+</nav>
+
+<!-- ============================================================== HIDE -->
+<section id="tab-hide">
+  <div class="panel">
+    <div class="row">
+      <div class="field">
+        <label class="lbl" for="hd-cover">Cover image <span>(the photo you hide inside)</span></label>
+        <div class="drop" id="hd-cover-drop">
+          <input type="file" id="hd-cover" accept="image/*">
+          <div class="icon" data-icon>&#9633;</div>
+          <img class="thumb" alt="">
+          <div class="meta"><b>Choose or drop an image</b><span>PNG, JPEG, any size</span></div>
+        </div>
+      </div>
+      <div class="field">
+        <label class="lbl" for="hd-payload">File to hide <span>(any type, any size that fits)</span></label>
+        <div class="drop" id="hd-payload-drop">
+          <input type="file" id="hd-payload">
+          <div class="icon" data-icon>&#9671;</div>
+          <img class="thumb" alt="">
+          <div class="meta"><b>Choose or drop a file</b><span>document, image, archive</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="field" id="hd-gauge" hidden>
+      <label class="lbl">Capacity used</label>
+      <div class="bar"><i id="hd-bar" style="width:0"></i></div>
+      <div class="barnote"><span id="hd-used"></span><span id="hd-limit"></span></div>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label class="lbl" for="hd-rate">Embedding rate</label>
+        <select id="hd-rate">
+          <option value="conservative">Conservative (hardest to detect)</option>
+          <option value="balanced" selected>Balanced (recommended)</option>
+          <option value="aggressive">Aggressive (most room, but detectable)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="lbl" for="hd-pass">Passphrase <span>(the receiver needs this exact phrase)</span></label>
+        <input type="password" id="hd-pass" autocomplete="new-password" placeholder="correct horse battery staple">
+      </div>
+    </div>
+
+    <button class="go" id="hd-go" disabled><span class="spin"></span>Hide and download</button>
+    <div class="msg" id="hd-fit" hidden></div>
+    <div class="msg" id="hd-out" hidden></div>
+  </div>
+
+  <div class="panel" id="hd-result" hidden>
+    <label class="lbl">Result <span>(the carrier looks identical to the original)</span></label>
+    <div class="compare">
+      <figure><img id="cmp-cover" alt="original cover">
+        <figcaption><b>Original</b>the photo you started with</figcaption></figure>
+      <figure><img id="cmp-stego" alt="carrier with hidden data">
+        <figcaption><b>Carrier</b>now holds your encrypted file</figcaption></figure>
+      <figure><canvas id="cmp-diff"></canvas>
+        <figcaption><b>Difference</b><span id="cmp-amp"></span></figcaption></figure>
+    </div>
+    <div class="stats" id="hd-stats"></div>
+  </div>
+</section>
+
+<!-- ============================================================ REVEAL -->
+<section id="tab-reveal" hidden>
+  <div class="panel">
+    <div class="field">
+      <label class="lbl" for="rv-file">Image containing a hidden file</label>
+      <div class="drop" id="rv-file-drop">
+        <input type="file" id="rv-file" accept="image/*">
+        <div class="icon" data-icon>&#9633;</div>
+        <img class="thumb" alt="">
+        <div class="meta"><b>Choose or drop the carrier image</b><span>must be the exact file you were sent</span></div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label class="lbl" for="rv-name">Save recovered file as</label>
+        <input type="text" id="rv-name" value="recovered.bin">
+      </div>
+      <div class="field">
+        <label class="lbl" for="rv-pass">Passphrase</label>
+        <input type="password" id="rv-pass" autocomplete="current-password">
+      </div>
+    </div>
+    <button class="go" id="rv-go"><span class="spin"></span>Reveal and download</button>
+    <div class="msg" id="rv-out" hidden></div>
+    <div id="rv-preview" hidden style="margin-top:18px">
+      <label class="lbl">Recovered file</label>
+      <img id="rv-img" alt="recovered image" style="max-width:100%;border-radius:9px;border:1px solid var(--line)">
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================== ANALYSE -->
+<section id="tab-analyse" hidden>
+  <div class="panel">
+    <div class="field">
+      <label class="lbl" for="an-file">Cover image <span>(how much could this photo hide?)</span></label>
+      <div class="drop" id="an-file-drop">
+        <input type="file" id="an-file" accept="image/*">
+        <div class="icon" data-icon>&#9633;</div>
+        <img class="thumb" alt="">
+        <div class="meta"><b>Choose or drop an image</b><span>nothing is stored on the server</span></div>
+      </div>
+    </div>
+    <div id="an-out" hidden>
+      <div class="rates" id="an-rates"></div>
+      <div class="field" style="margin:20px 0 0">
+        <label class="lbl">Texture <span id="an-tex-label"></span></label>
+        <div class="bar"><i id="an-tex" style="width:0"></i></div>
+        <p class="barnote" style="display:block;margin-top:9px">
+          Detailed photographs hide data far better than smooth ones. A clear sky is a poor
+          hiding place however large it is.
+        </p>
+      </div>
+    </div>
+    <div class="msg bad" id="an-err" hidden></div>
+  </div>
+</section>
+
+<!-- ============================================================== RANK -->
+<section id="tab-rank" hidden>
+  <div class="panel">
+    <div class="field">
+      <label class="lbl" for="rk-files">Candidate images <span>(pick several at once)</span></label>
+      <div class="drop" id="rk-files-drop">
+        <input type="file" id="rk-files" accept="image/*" multiple>
+        <div class="icon" data-icon>&#9638;</div>
+        <img class="thumb" alt="">
+        <div class="meta"><b>Choose or drop several images</b><span>they get ordered best first</span></div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label class="lbl" for="rk-size">Payload size in bytes</label>
+        <input type="number" id="rk-size" value="50000" min="0" step="1000">
+      </div>
+      <div class="field">
+        <label class="lbl" for="rk-rate">Embedding rate</label>
+        <select id="rk-rate">
+          <option value="conservative">Conservative</option>
+          <option value="balanced" selected>Balanced</option>
+          <option value="aggressive">Aggressive</option>
+        </select>
+      </div>
+    </div>
+    <button class="go" id="rk-go"><span class="spin"></span>Rank</button>
+    <div id="rk-out" hidden></div>
+    <div class="msg bad" id="rk-err" hidden></div>
+  </div>
+</section>
+
+<footer>
+  The carrier must arrive <strong>byte-for-byte identical</strong>. WhatsApp, Instagram
+  and Twitter re-compress whatever you send, and that destroys the hidden data
+  completely. Send it as an email attachment, or through Drive, Dropbox, or
+  Telegram&rsquo;s <em>send as file</em>.
+</footer>
+
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+
+function humanBytes(n) {
+  if (n < 1024) return n + " B";
+  if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
+  return (n / 1048576).toFixed(2) + " MB";
+}
+
+function show(el, text, kind) {
+  el.textContent = text;
+  el.className = "msg" + (kind ? " " + kind : "");
+  el.hidden = false;
+}
+
+/** POST a FormData, surfacing the server's own message instead of a status code. */
+async function post(url, form) {
+  const res = await fetch(url, { method: "POST", body: form });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = typeof body.detail === "string" ? body.detail : detail;
+    } catch (_) { /* non-JSON error body */ }
+    throw new Error(detail);
+  }
+  return res;
+}
+
+function download(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function busy(button, on) {
+  button.classList.toggle("busy", on);
+  button.disabled = on;
+}
+
+/**
+ * Wire a drop zone: click-to-pick, drag-and-drop, thumbnail and metadata.
+ * `onPick` runs whenever the selection changes.
+ */
+function dropZone(inputId, onPick) {
+  const input = $(inputId);
+  const zone = $(inputId + "-drop");
+  const thumb = zone.querySelector(".thumb");
+  const icon = zone.querySelector("[data-icon]");
+  const meta = zone.querySelector(".meta");
+  const title = meta.querySelector("b");
+  const sub = meta.querySelector("span");
+
+  function render() {
+    const files = input.files;
+    if (!files || !files.length) return;
+
+    if (files.length > 1) {
+      title.textContent = `${files.length} images selected`;
+      sub.textContent = [...files].reduce((n, f) => n + f.size, 0) > 0
+        ? humanBytes([...files].reduce((n, f) => n + f.size, 0)) + " total" : "";
+    } else {
+      title.textContent = files[0].name;
+      sub.textContent = humanBytes(files[0].size);
+    }
+
+    const first = files[0];
+    if (first.type.startsWith("image/")) {
+      const url = URL.createObjectURL(first);
+      thumb.src = url;
+      thumb.classList.add("on");
+      icon.style.display = "none";
+      // Report true pixel dimensions once the browser has decoded it.
+      thumb.onload = () => {
+        if (files.length === 1) {
+          const img = new Image();
+          img.onload = () => { sub.textContent =
+            `${img.naturalWidth}x${img.naturalHeight} - ${humanBytes(first.size)}`; };
+          img.src = url;
+        }
+      };
+    } else {
+      thumb.classList.remove("on");
+      icon.style.display = "";
+    }
+    onPick && onPick(files);
+  }
+
+  input.addEventListener("change", render);
+  ["dragenter", "dragover"].forEach((ev) =>
+    zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((ev) =>
+    zone.addEventListener(ev, () => zone.classList.remove("over")));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    if (e.dataTransfer.files.length) { input.files = e.dataTransfer.files; render(); }
+  });
+  return input;
+}
+
+// ------------------------------------------------------------------- tabs
+document.querySelectorAll("nav button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("nav button").forEach((b) =>
+      b.setAttribute("aria-selected", String(b === btn)));
+    document.querySelectorAll("section").forEach((s) =>
+      s.hidden = s.id !== "tab-" + btn.dataset.tab);
+  });
+});
+
+// ------------------------------------------------------------------- hide
+let coverRates = null;   // rate name -> capacity report, for the live fit check
+
+dropZone("hd-cover", async () => {
+  coverRates = null;
+  const form = new FormData();
+  form.append("image", $("hd-cover").files[0]);
+  try {
+    coverRates = (await (await post("/api/capacity", form)).json()).rates;
+  } catch (err) {
+    show($("hd-fit"), err.message, "bad");
+  }
+  updateFit();
+});
+dropZone("hd-payload", updateFit);
+$("hd-rate").addEventListener("change", updateFit);
+
+/** The differentiator, made visible: say what fits before anything is embedded. */
+function updateFit() {
+  const payload = $("hd-payload").files[0];
+  const box = $("hd-fit");
+  const gauge = $("hd-gauge");
+
+  if (!coverRates) { box.hidden = true; gauge.hidden = true; $("hd-go").disabled = true; return; }
+
+  const limit = coverRates[$("hd-rate").value].max_payload_bytes;
+  gauge.hidden = false;
+  $("hd-limit").textContent = humanBytes(limit) + " available";
+
+  if (!payload) {
+    $("hd-bar").style.width = "0";
+    $("hd-bar").classList.remove("over");
+    $("hd-used").textContent = "no file chosen";
+    box.hidden = true;
+    $("hd-go").disabled = true;
+    return;
+  }
+
+  const pct = limit > 0 ? Math.min(payload.size / limit * 100, 100) : 100;
+  const over = payload.size > limit;
+  $("hd-bar").style.width = pct + "%";
+  $("hd-bar").classList.toggle("over", over);
+  $("hd-used").textContent = humanBytes(payload.size) + " needed";
+
+  if (over) {
+    show(box,
+      `${payload.name} is ${humanBytes(payload.size)}, which is `
+      + `${humanBytes(payload.size - limit)} more than this cover can hold.\n`
+      + `The limit here is ${humanBytes(limit)} at the ${$("hd-rate").value} rate.\n`
+      + `Try a bigger image, a higher rate, or a smaller file.`, "bad");
+    $("hd-go").disabled = true;
+  } else {
+    box.hidden = true;
+    $("hd-go").disabled = false;
+  }
+}
+
+/** Draw an amplified map of what changed, so the +-1 edits become visible. */
+function drawDifference(coverURL, stegoURL, canvas, amplify = 60) {
+  // Label it from the value actually used, so the caption cannot drift from the code.
+  $("cmp-amp").textContent = `amplified ${amplify}×`;
+  const a = new Image(), b = new Image();
+  let loaded = 0;
+  const ready = () => {
+    if (++loaded < 2) return;
+    const w = Math.min(a.naturalWidth, 480), scale = w / a.naturalWidth;
+    const h = Math.round(a.naturalHeight * scale);
+    canvas.width = w; canvas.height = h;
+
+    const off = document.createElement("canvas");
+    off.width = w; off.height = h;
+    const octx = off.getContext("2d", { willReadFrequently: true });
+
+    octx.drawImage(a, 0, 0, w, h);
+    const pa = octx.getImageData(0, 0, w, h);
+    octx.clearRect(0, 0, w, h);
+    octx.drawImage(b, 0, 0, w, h);
+    const pb = octx.getImageData(0, 0, w, h);
+
+    for (let i = 0; i < pa.data.length; i += 4) {
+      for (let c = 0; c < 3; c++) {
+        pa.data[i + c] = Math.min(255, Math.abs(pa.data[i + c] - pb.data[i + c]) * amplify);
+      }
+      pa.data[i + 3] = 255;
+    }
+    canvas.getContext("2d").putImageData(pa, 0, 0);
+  };
+  a.onload = ready; b.onload = ready;
+  a.src = coverURL; b.src = stegoURL;
+}
+
+$("hd-go").addEventListener("click", async () => {
+  const pass = $("hd-pass").value;
+  if (!pass) { show($("hd-out"), "Enter a passphrase first.", "bad"); return; }
+
+  busy($("hd-go"), true);
+  show($("hd-out"), "Deriving key, encrypting and embedding…", "ok");
+  $("hd-result").hidden = true;
+
+  const coverFile = $("hd-cover").files[0];
+  const form = new FormData();
+  form.append("cover", coverFile);
+  form.append("payload", $("hd-payload").files[0]);
+  form.append("passphrase", pass);
+  form.append("rate", $("hd-rate").value);
+
+  try {
+    const res = await post("/api/hide", form);
+    const name = (res.headers.get("Content-Disposition") || "")
+      .split("filename=")[1]?.replace(/"/g, "") || "carrier.png";
+    const blob = await res.blob();
+    download(blob, name);
+
+    const coverURL = URL.createObjectURL(coverFile);
+    const stegoURL = URL.createObjectURL(blob);
+    $("cmp-cover").src = coverURL;
+    $("cmp-stego").src = stegoURL;
+    drawDifference(coverURL, stegoURL, $("cmp-diff"));
+
+    const h = (k) => +res.headers.get("X-Sagex-" + k);
+    $("hd-stats").innerHTML = [
+      [humanBytes(h("Payload-Bytes")), "hidden"],
+      [humanBytes(h("Stored-Bytes")), "after compression"],
+      [h("Pixels-Changed").toLocaleString(), "values changed"],
+      [res.headers.get("X-Sagex-Psnr") + " dB", "image quality"],
+    ].map(([v, k]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join("");
+
+    $("hd-result").hidden = false;
+    show($("hd-out"), `Saved as ${name}. Send it without re-compressing.`, "ok");
+  } catch (err) {
+    show($("hd-out"), err.message, "bad");
+  } finally {
+    busy($("hd-go"), false);
+  }
+});
+
+// ----------------------------------------------------------------- reveal
+dropZone("rv-file", (files) => {
+  // Offer a sensible output name based on what they dropped.
+  const stem = files[0].name.replace(/\.[^.]+$/, "").replace(/-carrier$/, "");
+  if ($("rv-name").value === "recovered.bin") $("rv-name").value = stem + "-recovered.bin";
+});
+
+$("rv-go").addEventListener("click", async () => {
+  const file = $("rv-file").files[0];
+  const pass = $("rv-pass").value;
+  if (!file) { show($("rv-out"), "Choose the carrier image first.", "bad"); return; }
+  if (!pass) { show($("rv-out"), "Enter the passphrase.", "bad"); return; }
+
+  busy($("rv-go"), true);
+  $("rv-preview").hidden = true;
+  show($("rv-out"), "Deriving key and searching…", "ok");
+
+  const form = new FormData();
+  form.append("stego", file);
+  form.append("passphrase", pass);
+  form.append("filename", $("rv-name").value || "recovered.bin");
+
+  try {
+    const res = await post("/api/reveal", form);
+    const name = $("rv-name").value || "recovered.bin";
+    const blob = await res.blob();
+    download(blob, name);
+    show($("rv-out"),
+      `Recovered ${humanBytes(+res.headers.get("X-Sagex-Recovered-Bytes"))} to ${name}.`, "ok");
+
+    // If the hidden file was itself an image, show it - the most convincing proof.
+    const peek = new Image();
+    const url = URL.createObjectURL(blob);
+    peek.onload = () => { $("rv-img").src = url; $("rv-preview").hidden = false; };
+    peek.src = url;
+  } catch (err) {
+    show($("rv-out"), err.message, "bad");
+  } finally {
+    busy($("rv-go"), false);
+  }
+});
+
+// ---------------------------------------------------------------- analyse
+dropZone("an-file", async () => {
+  $("an-err").hidden = true;
+  $("an-out").hidden = true;
+  const form = new FormData();
+  form.append("image", $("an-file").files[0]);
+  try {
+    const data = await (await post("/api/capacity", form)).json();
+    $("an-rates").innerHTML = Object.entries(data.rates).map(([name, r]) => `
+      <div class="rate ${r.max_payload_bytes === 0 ? "zero" : ""} ${name === "balanced" ? "pick" : ""}">
+        <h4>${name}</h4>
+        <div class="big">${r.max_payload_bytes === 0 ? "nothing fits"
+                                                     : humanBytes(r.max_payload_bytes)}</div>
+      </div>`).join("");
+
+    const score = data.rates.balanced.texture_score;
+    $("an-tex").style.width = Math.round(score * 100) + "%";
+    $("an-tex-label").textContent =
+      `${score.toFixed(2)} of 1.00 ` +
+      (score > 0.5 ? "(rich, hides data well)"
+       : score > 0.25 ? "(moderate)" : "(smooth, changes are easier to spot)");
+    $("an-out").hidden = false;
+  } catch (err) {
+    show($("an-err"), err.message, "bad");
+  }
+});
+
+// ------------------------------------------------------------------- rank
+dropZone("rk-files");
+
+$("rk-go").addEventListener("click", async () => {
+  const files = $("rk-files").files;
+  if (!files.length) { show($("rk-err"), "Choose some images first.", "bad"); return; }
+
+  busy($("rk-go"), true);
+  $("rk-err").hidden = true;
+  $("rk-out").hidden = true;
+
+  const form = new FormData();
+  for (const f of files) form.append("images", f);
+  form.append("size", $("rk-size").value);
+  form.append("rate", $("rk-rate").value);
+
+  // Thumbnails come from the local files, so nothing extra is fetched.
+  const thumbs = {};
+  for (const f of files) thumbs[f.name] = URL.createObjectURL(f);
+
+  try {
+    const data = await (await post("/api/rank", form)).json();
+    const good = data.ranked.map((r, i) => `
+      <div class="card">
+        <div class="rank">${i + 1}</div>
+        <img src="${thumbs[r.filename] || ""}" alt="">
+        <div class="who"><b>${r.filename}</b>
+          <span>holds ${humanBytes(r.max_payload_bytes)}</span></div>
+        <div class="tex"><div class="bar"><i style="width:${r.texture_score * 100}%"></i></div>
+          <div class="barnote"><span>texture</span><span>${r.texture_score.toFixed(2)}</span></div>
+        </div>
+      </div>`).join("");
+    const bad = data.rejected.map((r) => `
+      <div class="card no">
+        <div class="rank">&times;</div>
+        <img src="${thumbs[r.filename] || ""}" alt="">
+        <div class="who"><b>${r.filename}</b><span>too small for this payload</span></div>
+      </div>`).join("");
+
+    $("rk-out").innerHTML =
+      `<p class="barnote" style="display:block;margin:16px 0 0">
+         ${data.ranked.length} of ${data.considered} can hold
+         ${humanBytes(data.payload_bytes)}, best first.</p>
+       <div class="cards">${good}${bad}</div>`;
+    $("rk-out").hidden = false;
+  } catch (err) {
+    show($("rk-err"), err.message, "bad");
+  } finally {
+    busy($("rk-go"), false);
+  }
+});
+</script>
+</body>
+</html>
